@@ -84,6 +84,7 @@ def main():
     # 注意这里的collate_fn是自定义的，因为读取的数据包括image和targets，不能直接使用默认的方法合成batch
     if train_sampler:
         # 如果按照图片高宽比采样图片，dataloader中需要使用batch_sampler
+        # collate_fn：不定义这个方法，默认是使用torch.stack()进行拼接，分类网络中每个图像都是一个Tensor。但是这里每个图象是一个Tuple，需要自定义
         train_data_loader = torch.utils.data.DataLoader(train_dataset,
                                                         batch_sampler=train_batch_sampler,
                                                         pin_memory=True,

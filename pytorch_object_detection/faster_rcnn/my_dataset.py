@@ -212,6 +212,7 @@ class VOCDataSet(Dataset):
 
         return (data_height, data_width), target
 
+    # 将batch_size*Tuple(image, targets) -> Tuple(batch_size*images), Tuple(batch_size*targets)
     @staticmethod
     def collate_fn(batch):
         return tuple(zip(*batch))
