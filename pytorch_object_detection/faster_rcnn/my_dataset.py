@@ -13,29 +13,33 @@ class VOCDataSet(Dataset):
     def __init__(self, voc_root, year="2012", transforms=None, txt_name: str = "train.txt"):
         assert year in ["2007", "2012"], "year must be in ['2007', '2012']"
         # 增加容错能力
+        # 数据根路径
         if "VOCdevkit" in voc_root:
             self.root = os.path.join(voc_root, f"VOC{year}")
         else:
             self.root = os.path.join(voc_root, "VOCdevkit", f"VOC{year}")
+        # 图像数据路径
         self.img_root = os.path.join(self.root, "JPEGImages")
+        # 标度信息数据路径
         self.annotations_root = os.path.join(self.root, "Annotations")
 
-        # read train.txt or val.txt file
+        # 根据输入参数决定读取 train.txt 或者 val.txt file
         txt_path = os.path.join(self.root, "ImageSets", "Main", txt_name)
         assert os.path.exists(txt_path), "not found {} file.".format(txt_name)
 
+        # 分析.txt文件中各个图片的标注信息
         with open(txt_path) as read:
             xml_list = [os.path.join(self.annotations_root, line.strip() + ".xml")
                         for line in read.readlines() if len(line.strip()) > 0]
 
         self.xml_list = []
-        # check file
+        # 检查这些图片的标注信息是否都存在
         for xml_path in xml_list:
             if os.path.exists(xml_path) is False:
                 print(f"Warning: not found '{xml_path}', skip this annotation file.")
                 continue
 
-            # check for targets
+            # 检查图片标注信息xml文件中是否有对象
             with open(xml_path) as fid:
                 xml_str = fid.read()
             xml = etree.fromstring(xml_str)
@@ -44,11 +48,12 @@ class VOCDataSet(Dataset):
                 print(f"INFO: no objects in {xml_path}, skip this annotation file.")
                 continue
 
+            # 存储xml文件
             self.xml_list.append(xml_path)
 
         assert len(self.xml_list) > 0, "in '{}' file does not find any information.".format(txt_path)
 
-        # read class_indict
+        # 读类别信息文件
         json_file = './pascal_voc_classes.json'
         assert os.path.exists(json_file), "{} file not exist.".format(json_file)
         with open(json_file, 'r') as f:
@@ -56,26 +61,34 @@ class VOCDataSet(Dataset):
 
         self.transforms = transforms
 
+    # 官方要求实现的两个方法：__len__和__getitem__
+    # 返回数据集文件的个数
     def __len__(self):
         return len(self.xml_list)
 
+    # 输入索引值，返回图片和图片信息
     def __getitem__(self, idx):
-        # read xml
+        # 得到对应的xml文件路径
         xml_path = self.xml_list[idx]
         with open(xml_path) as fid:
             xml_str = fid.read()
         xml = etree.fromstring(xml_str)
+        # 通过["annotation"]下标获得xml的子目录
         data = self.parse_xml_to_dict(xml)["annotation"]
+        # filename得到图像的具体路径
         img_path = os.path.join(self.img_root, data["filename"])
         image = Image.open(img_path)
+        # 必须是JPG文件
         if image.format != "JPEG":
             raise ValueError("Image '{}' format not JPEG".format(img_path))
 
+        # 保存标注信息
         boxes = []
         labels = []
-        iscrowd = []
+        iscrowd = [] # 是否有其他目标重叠
         assert "object" in data, "{} lack of object information.".format(xml_path)
         for obj in data["object"]:
+            # 强制转换成float型，因为模型预测的过程也是float型
             xmin = float(obj["bndbox"]["xmin"])
             xmax = float(obj["bndbox"]["xmax"])
             ymin = float(obj["bndbox"]["ymin"])
@@ -97,7 +110,9 @@ class VOCDataSet(Dataset):
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
         labels = torch.as_tensor(labels, dtype=torch.int64)
         iscrowd = torch.as_tensor(iscrowd, dtype=torch.int64)
+        # 外界传进来的参数
         image_id = torch.tensor([idx])
+        # 面积
         area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
 
         target = {}
@@ -107,11 +122,13 @@ class VOCDataSet(Dataset):
         target["area"] = area
         target["iscrowd"] = iscrowd
 
+        # 检测是否需要transforms预处理方法
         if self.transforms is not None:
             image, target = self.transforms(image, target)
 
         return image, target
 
+    # 优化算法
     def get_height_and_width(self, idx):
         # read xml
         xml_path = self.xml_list[idx]
@@ -199,6 +216,7 @@ class VOCDataSet(Dataset):
     def collate_fn(batch):
         return tuple(zip(*batch))
 
+## 测试样例
 # import transforms
 # from draw_box_utils import draw_objs
 # from PIL import Image

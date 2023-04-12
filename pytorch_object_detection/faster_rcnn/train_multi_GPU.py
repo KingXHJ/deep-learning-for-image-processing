@@ -193,6 +193,7 @@ def main(args):
 if __name__ == "__main__":
     import argparse
 
+    # CUDA_VISIBLE_DEVICES=0,1,2,3 nohup python -m torch.distributed.launch --nproc_per_node=4 --use_env train_multi_GPU.py --data-path ../../data_set --output-dir ./save_weights --batch-size 4 --lr 0.000625 > ./log/trainingTestLog.txt 2>&1 &
     parser = argparse.ArgumentParser(
         description=__doc__)
 
@@ -203,7 +204,7 @@ if __name__ == "__main__":
     # 检测目标类别数(不包含背景)
     parser.add_argument('--num-classes', default=20, type=int, help='num_classes')
     # 每块GPU上的batch_size
-    parser.add_argument('-b', '--batch-size', default=4, type=int,
+    parser.add_argument('-b', '--batch-size', default=8, type=int,
                         help='images per gpu, the total batch size is $NGPU x batch_size')
     # 指定接着从哪个epoch数开始训练
     parser.add_argument('--start_epoch', default=0, type=int, help='start epoch')

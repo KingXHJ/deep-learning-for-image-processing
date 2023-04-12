@@ -5,13 +5,17 @@ import random
 def main():
     random.seed(0)  # 设置随机种子，保证随机结果可复现
 
+    # 文件路径
     files_path = "./VOCdevkit/VOC2012/Annotations"
     assert os.path.exists(files_path), "path: '{}' does not exist.".format(files_path)
 
     val_rate = 0.5
 
+    # 取文件名
     files_name = sorted([file.split(".")[0] for file in os.listdir(files_path)])
+    # 文件数量
     files_num = len(files_name)
+    # 采样范围和采样个数
     val_index = random.sample(range(0, files_num), k=int(files_num*val_rate))
     train_files = []
     val_files = []
