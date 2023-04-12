@@ -347,9 +347,13 @@ class RoIHeads(torch.nn.Module):
         return all_boxes, all_scores, all_labels
 
     def forward(self,
+                # backbone得到
                 features,       # type: Dict[str, Tensor]
+                # RPN输出的proposals
                 proposals,      # type: List[Tensor]
+                # 预处理之后得到的图像大小
                 image_shapes,   # type: List[Tuple[int, int]]
+                # 标注信息
                 targets=None    # type: Optional[List[Dict[str, Tensor]]]
                 ):
         # type: (...) -> Tuple[List[Dict[str, Tensor]], Dict[str, Tensor]]

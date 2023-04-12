@@ -203,10 +203,13 @@ class BoxCoder(object):
         """
         assert isinstance(boxes, (list, tuple))
         assert isinstance(rel_codes, torch.Tensor)
+        # 获取每张图片box的数目
         boxes_per_image = [b.size(0) for b in boxes]
+        # 一个batch中的所有anchors信息拼接在一起
         concat_boxes = torch.cat(boxes, dim=0)
 
         box_sum = 0
+        # 非要这么获取，明明用concat_box就可以得到
         for val in boxes_per_image:
             box_sum += val
 
@@ -230,6 +233,8 @@ class BoxCoder(object):
             rel_codes (Tensor): encoded boxes (bbox regression parameters)
             boxes (Tensor): reference boxes (anchors/proposals)
         """
+
+        # 设成一样的设备和一样的数据类型
         boxes = boxes.to(rel_codes.dtype)
 
         # xmin, ymin, xmax, ymax
@@ -238,17 +243,21 @@ class BoxCoder(object):
         ctr_x = boxes[:, 0] + 0.5 * widths   # anchor/proposal中心x坐标
         ctr_y = boxes[:, 1] + 0.5 * heights  # anchor/proposal中心y坐标
 
+        # wx, wy, ww, wh都是超参数，这里都是1，SSD中会重新设置
+        # 不用0::4这种切片方式，最终不会输出两个维度，只会是一个维度
         wx, wy, ww, wh = self.weights  # RPN中为[1,1,1,1], fastrcnn中为[10,10,5,5]
         dx = rel_codes[:, 0::4] / wx   # 预测anchors/proposals的中心坐标x回归参数
         dy = rel_codes[:, 1::4] / wy   # 预测anchors/proposals的中心坐标y回归参数
         dw = rel_codes[:, 2::4] / ww   # 预测anchors/proposals的宽度回归参数
         dh = rel_codes[:, 3::4] / wh   # 预测anchors/proposals的高度回归参数
 
+        # 防止指数爆炸，设置上限
         # limit max value, prevent sending too large values into torch.exp()
         # self.bbox_xform_clip=math.log(1000. / 16)   4.135
         dw = torch.clamp(dw, max=self.bbox_xform_clip)
         dh = torch.clamp(dh, max=self.bbox_xform_clip)
 
+        # dx两个维度，width只有一个维度，加一个Nons保证维度相同
         pred_ctr_x = dx * widths[:, None] + ctr_x[:, None]
         pred_ctr_y = dy * heights[:, None] + ctr_y[:, None]
         pred_w = torch.exp(dw) * widths[:, None]
@@ -263,6 +272,9 @@ class BoxCoder(object):
         # ymax
         pred_boxes4 = pred_ctr_y + torch.tensor(0.5, dtype=pred_ctr_y.dtype, device=pred_h.device) * pred_h
 
+        # cat和stack算法的区别
+        # stack首先会新增一个维度，在新增的维度上拼接
+        # cat会直接在已有的维度上进行拼接
         pred_boxes = torch.stack((pred_boxes1, pred_boxes2, pred_boxes3, pred_boxes4), dim=2).flatten(1)
         return pred_boxes
 
@@ -311,6 +323,7 @@ class Matcher(object):
             [0, M - 1] or a negative value indicating that prediction i could not
             be matched.
         """
+        # 判断元素个数是否为0
         if match_quality_matrix.numel() == 0:
             # empty targets or proposals not supported during training
             if match_quality_matrix.shape[0] == 0:
@@ -329,6 +342,7 @@ class Matcher(object):
         # matches对应最大值所在的索引
         matched_vals, matches = match_quality_matrix.max(dim=0)  # the dimension to reduce.
         if self.allow_low_quality_matches:
+            # 用"="是引用，这里是克隆
             all_matches = matches.clone()
         else:
             all_matches = None
@@ -346,10 +360,12 @@ class Matcher(object):
         # iou在[low_threshold, high_threshold]之间的matches索引置为-2
         matches[between_thresholds] = self.BETWEEN_THRESHOLDS    # -2
 
+        # self.allow_low_quality_matches作用：将不符合0.3和0.7界限的GTbox都利用起来
         if self.allow_low_quality_matches:
             assert all_matches is not None
             self.set_low_quality_matches_(matches, all_matches, match_quality_matrix)
 
+        # 小于0.3置为-1，大于0.3小于0.7置于-2，大于0.7的部分没做任何处理
         return matches
 
     def set_low_quality_matches_(self, matches, all_matches, match_quality_matrix):

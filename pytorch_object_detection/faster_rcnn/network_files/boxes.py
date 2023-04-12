@@ -79,6 +79,7 @@ def batched_nms(boxes, scores, idxs, iou_threshold):
     offsets = idxs.to(boxes) * (max_coordinate + 1)
     # boxes加上对应层的偏移量后，保证不同类别/层之间boxes不会有重合的现象
     boxes_for_nms = boxes + offsets[:, None]
+    # 对每一个预测特征层实现非极大值抑制
     keep = nms(boxes_for_nms, scores, iou_threshold)
     return keep
 
@@ -96,7 +97,8 @@ def remove_small_boxes(boxes, min_size):
         keep (Tensor[K]): indices of the boxes that have both sides
             larger than min_size
     """
-    ws, hs = boxes[:, 2] - boxes[:, 0], boxes[:, 3] - boxes[:, 1]  # 预测boxes的宽和高
+    # 预测boxes的宽和高
+    ws, hs = boxes[:, 2] - boxes[:, 0], boxes[:, 3] - boxes[:, 1]  
     # keep = (ws >= min_size) & (hs >= min_size)  # 当满足宽，高都大于给定阈值时为True
     keep = torch.logical_and(torch.ge(ws, min_size), torch.ge(hs, min_size))
     # nonzero(): Returns a tensor containing the indices of all non-zero elements of input
@@ -129,8 +131,10 @@ def clip_boxes_to_image(boxes, size):
         boxes_y = torch.max(boxes_y, torch.tensor(0, dtype=boxes.dtype, device=boxes.device))
         boxes_y = torch.min(boxes_y, torch.tensor(height, dtype=boxes.dtype, device=boxes.device))
     else:
-        boxes_x = boxes_x.clamp(min=0, max=width)   # 限制x坐标范围在[0,width]之间
-        boxes_y = boxes_y.clamp(min=0, max=height)  # 限制y坐标范围在[0,height]之间
+        # 限制x坐标范围在[0,width]之间
+        boxes_x = boxes_x.clamp(min=0, max=width) 
+        # 限制y坐标范围在[0,height]之间  
+        boxes_y = boxes_y.clamp(min=0, max=height)  
 
     clipped_boxes = torch.stack((boxes_x, boxes_y), dim=dim)
     return clipped_boxes.reshape(boxes.shape)

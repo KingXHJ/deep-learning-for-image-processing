@@ -154,6 +154,7 @@ class TwoMLPHead(nn.Module):
         self.fc7 = nn.Linear(representation_size, representation_size)
 
     def forward(self, x):
+        # X: [batch_size*proposal, ROIAlign_Channels, output_size, output_size]
         x = x.flatten(start_dim=1)
 
         x = F.relu(self.fc6(x))
@@ -364,6 +365,7 @@ class FasterRCNN(FasterRCNNBase):
         # 经过测试后发现加不加pool层对检测精度没有影响。
         # 通过分析发现绝大部分检测的目标都分布在预测特征层1、2、3上（针对pascalvoc2012数据集）
         if box_roi_pool is None:
+            # MultiScaleRoIAlign：底层封装死了，看不到，自己上网查
             box_roi_pool = MultiScaleRoIAlign(
                 featmap_names=['0', '1', '2', '3'],  # 在哪些特征层进行roi pooling
                 output_size=[7, 7],
@@ -374,6 +376,7 @@ class FasterRCNN(FasterRCNNBase):
         if box_head is None:
             resolution = box_roi_pool.output_size[0]  # 默认等于7
             representation_size = 1024
+            # resolution：就是MultiScaleRoIAlign的参数中，output_size的大小，这里为7
             box_head = TwoMLPHead(
                 out_channels * resolution ** 2,
                 representation_size
