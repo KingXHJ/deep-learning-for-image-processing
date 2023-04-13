@@ -17,7 +17,8 @@ def create_model(num_classes=21):
     model = SSD300(backbone=backbone, num_classes=num_classes)
 
     # https://ngc.nvidia.com/catalog/models -> search ssd -> download FP32
-    pre_ssd_path = "./src/nvidia_ssdpyt_fp32.pt"
+    # pre_ssd_path = "./src/nvidia_ssdpyt_fp32.pt"
+    pre_ssd_path = "./src/nvidia_ssdpyt_amp_200703.pt"
     if os.path.exists(pre_ssd_path) is False:
         raise FileNotFoundError("nvidia_ssdpyt_fp32.pt not find in {}".format(pre_ssd_path))
     pre_model_dict = torch.load(pre_ssd_path, map_location='cpu')
@@ -170,11 +171,11 @@ if __name__ == '__main__':
         description=__doc__)
 
     # 训练设备类型
-    parser.add_argument('--device', default='cuda:0', help='device')
+    parser.add_argument('--device', default='cuda:4', help='device')
     # 检测的目标类别个数，不包括背景
     parser.add_argument('--num_classes', default=20, type=int, help='num_classes')
     # 训练数据集的根目录(VOCdevkit)
-    parser.add_argument('--data-path', default='./', help='dataset')
+    parser.add_argument('--data-path', default='../../data_set', help='dataset')
     # 文件保存地址
     parser.add_argument('--output-dir', default='./save_weights', help='path where to save')
     # 若需要接着上次训练，则指定上次训练保存权重文件地址

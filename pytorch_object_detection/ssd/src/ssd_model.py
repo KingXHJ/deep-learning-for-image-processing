@@ -9,14 +9,18 @@ from .utils import dboxes300_coco, Encoder, PostProcess
 class Backbone(nn.Module):
     def __init__(self, pretrain_path=None):
         super(Backbone, self).__init__()
+        # 实例化ResNet网络
         net = resnet50()
+        # 多个预测特征层
         self.out_channels = [1024, 512, 512, 256, 256, 256]
 
         if pretrain_path is not None:
             net.load_state_dict(torch.load(pretrain_path))
 
+        # net.children可以认为是定义的时候，“nn.”下面的模块都认为是子模块
         self.feature_extractor = nn.Sequential(*list(net.children())[:7])
 
+        # 最后一个子模块的第一部分
         conv4_block1 = self.feature_extractor[-1][0]
 
         # 修改conv4_block1的步距，从2->1
@@ -32,27 +36,37 @@ class Backbone(nn.Module):
 class SSD300(nn.Module):
     def __init__(self, backbone=None, num_classes=21):
         super(SSD300, self).__init__()
+        # backbone是否为空
         if backbone is None:
             raise Exception("backbone is None")
+        # backbone是否有out_channels这个属性
         if not hasattr(backbone, "out_channels"):
             raise Exception("the backbone not has attribute: out_channel")
         self.feature_extractor = backbone
 
         self.num_classes = num_classes
         # out_channels = [1024, 512, 512, 256, 256, 256] for resnet50
+        # 构造好额外的层结构——多尺度特征图
         self._build_additional_features(self.feature_extractor.out_channels)
+        # 每一个预测特征层中，每个cell生成的default boxes
         self.num_defaults = [4, 6, 6, 6, 4, 4]
         location_extractors = []
         confidence_extractors = []
 
         # out_channels = [1024, 512, 512, 256, 256, 256] for resnet50
+        # 遍历每个预测特征层中的每个cell生成的default boxes和out_channels
         for nd, oc in zip(self.num_defaults, self.feature_extractor.out_channels):
             # nd is number_default_boxes, oc is output_channel
+            # 之前R-CNN中，每个boxes生成的是4*classes
+            # 但是SSD中，每个boxes生成的坐标与类别无关，因此只有4个
             location_extractors.append(nn.Conv2d(oc, nd * 4, kernel_size=3, padding=1))
+            # 目标分数预测器
             confidence_extractors.append(nn.Conv2d(oc, nd * self.num_classes, kernel_size=3, padding=1))
 
+        # 用ModuleList的方法存储
         self.loc = nn.ModuleList(location_extractors)
         self.conf = nn.ModuleList(confidence_extractors)
+        # 对额外的层结构和预测器添加参数初始化
         self._init_weights()
 
         default_box = dboxes300_coco()
@@ -69,6 +83,7 @@ class SSD300(nn.Module):
         additional_blocks = []
         # input_size = [1024, 512, 512, 256, 256, 256] for resnet50
         middle_channels = [256, 256, 128, 128, 128]
+        # 循环处理添加层结构
         for i, (input_ch, output_ch, middle_ch) in enumerate(zip(input_size[:-1], input_size[1:], middle_channels)):
             padding, stride = (1, 2) if i < 3 else (0, 1)
             layer = nn.Sequential(
@@ -98,16 +113,21 @@ class SSD300(nn.Module):
             locs.append(l(f).view(f.size(0), 4, -1))
             # [batch, n*classes, feat_size, feat_size] -> [batch, classes, -1]
             confs.append(c(f).view(f.size(0), self.num_classes, -1))
-
+        # 在".view(,,-1)"的-1维度上进行拼接
+        # contiguous()：调整成连续存储的格式
+        # 因为view会导致数据不连续，但是reshape不会
         locs, confs = torch.cat(locs, 2).contiguous(), torch.cat(confs, 2).contiguous()
         return locs, confs
 
     def forward(self, image, targets=None):
+        # Conv4_x的特征输出：38x38x1024
         x = self.feature_extractor(image)
 
         # Feature Map 38x38x1024, 19x19x512, 10x10x512, 5x5x256, 3x3x256, 1x1x256
+        # 存储预测特征层的列表
         detection_features = torch.jit.annotate(List[Tensor], [])  # [x]
         detection_features.append(x)
+        # 处理额外增加的5个特征层
         for layer in self.additional_blocks:
             x = layer(x)
             detection_features.append(x)
@@ -118,6 +138,7 @@ class SSD300(nn.Module):
         # For SSD 300, shall return nbatch x 8732 x {nlabels, nlocs} results
         # 38x38x4 + 19x19x6 + 10x10x6 + 5x5x6 + 3x3x4 + 1x1x4 = 8732
 
+        # 训练模式计算损失
         if self.training:
             if targets is None:
                 raise ValueError("In training mode, targets should be passed")
@@ -154,6 +175,9 @@ class Loss(nn.Module):
 
         self.location_loss = nn.SmoothL1Loss(reduction='none')
         # [num_anchors, 4] -> [4, num_anchors] -> [1, 4, num_anchors]
+        # nn.Parameter编程pytorch参数
+        # transpose(0, 1)：交换两个维度的信息
+        # unsqueeze(dim=0)：在维度0上增加一个维度
         self.dboxes = nn.Parameter(dboxes(order="xywh").transpose(0, 1).unsqueeze(dim=0),
                                    requires_grad=False)
 
@@ -167,6 +191,9 @@ class Loss(nn.Module):
         :param loc: anchor匹配到的对应GTBOX Nx4x8732
         :return:
         """
+        # 为什么要乘self.scale_xy或self.scale_wh
+        # 可以认为是一个小trick
+        # 让网络更加快速收敛
         gxy = self.scale_xy * (loc[:, :2, :] - self.dboxes[:, :2, :]) / self.dboxes[:, 2:, :]  # Nx2x8732
         gwh = self.scale_wh * (loc[:, 2:, :] / self.dboxes[:, 2:, :]).log()  # Nx2x8732
         return torch.cat((gxy, gwh), dim=1).contiguous()
@@ -180,6 +207,7 @@ class Loss(nn.Module):
             gloc, glabel: Nx4x8732, Nx8732
                 ground truth location and labels
         """
+        # 预测的位置，预测的标签，gt的位置，gt的标签
         # 获取正样本的mask  Tensor: [N, 8732]
         mask = torch.gt(glabel, 0)  # (gt: >)
         # mask1 = torch.nonzero(glabel)
@@ -195,21 +223,26 @@ class Loss(nn.Module):
         loc_loss = (mask.float() * loc_loss).sum(dim=1)  # Tenosr: [N]
 
         # hard negative mining Tenosr: [N, 8732]
+        # 索引0代表是背景
         con = self.confidence_loss(plabel, glabel)
 
+        # 为了加速运算使用了非常巧妙的计算
+        # start
         # positive mask will never selected
         # 获取负样本
         con_neg = con.clone()
         con_neg[mask] = 0.0
         # 按照confidence_loss降序排列 con_idx(Tensor: [N, 8732])
         _, con_idx = con_neg.sort(dim=1, descending=True)
-        _, con_rank = con_idx.sort(dim=1)  # 这个步骤比较巧妙
+        # 这个步骤比较巧妙
+        _, con_rank = con_idx.sort(dim=1)  
 
         # number of negative three times positive
         # 用于损失计算的负样本数是正样本的3倍（在原论文Hard negative mining部分），
         # 但不能超过总样本数8732
         neg_num = torch.clamp(3 * pos_num, max=mask.size(1)).unsqueeze(-1)
         neg_mask = torch.lt(con_rank, neg_num)  # (lt: <) Tensor [N, 8732]
+        # end
 
         # confidence最终loss使用选取的正样本loss+选取的负样本loss
         con_loss = (con * (mask.float() + neg_mask.float())).sum(dim=1)  # Tensor [N]
@@ -218,8 +251,11 @@ class Loss(nn.Module):
         # 避免出现图像中没有GTBOX的情况
         total_loss = loc_loss + con_loss
         # eg. [15, 3, 5, 0] -> [1.0, 1.0, 1.0, 0.0]
-        num_mask = torch.gt(pos_num, 0).float()  # 统计一个batch中的每张图像中是否存在正样本
-        pos_num = pos_num.float().clamp(min=1e-6)  # 防止出现分母为零的情况
-        ret = (total_loss * num_mask / pos_num).mean(dim=0)  # 只计算存在正样本的图像损失
+        # 统计一个batch中的每张图像中是否存在正样本
+        num_mask = torch.gt(pos_num, 0).float()  
+        # 防止出现分母为零的情况
+        pos_num = pos_num.float().clamp(min=1e-6)  
+        # 只计算存在正样本的图像损失
+        ret = (total_loss * num_mask / pos_num).mean(dim=0)  
         return ret
 

@@ -126,23 +126,27 @@ class Encoder(object):
             output : bboxes_out (Tensor 8732 x 4), labels_out (Tensor 8732)
             criteria : IoU threshold of bboexes
         """
+        # 计算每个GT与default box的iou
         # [nboxes, 8732]
-        ious = calc_iou_tensor(bboxes_in, self.dboxes)  # 计算每个GT与default box的iou
+        ious = calc_iou_tensor(bboxes_in, self.dboxes)  
+        # 寻找每个default box匹配到的最大IoU的GT
         # [8732,]
-        best_dbox_ious, best_dbox_idx = ious.max(dim=0)  # 寻找每个default box匹配到的最大IoU
+        best_dbox_ious, best_dbox_idx = ious.max(dim=0)  
+        # 寻找每个GT匹配到的最大IoU的default box
         # [nboxes,]
-        best_bbox_ious, best_bbox_idx = ious.max(dim=1)  # 寻找每个GT匹配到的最大IoU
+        best_bbox_ious, best_bbox_idx = ious.max(dim=1)  
 
-        # 将每个GT匹配到的最佳default box设置为正样本（对应论文中Matching strategy的第一条）
+        # (第一条准则)将每个GT匹配到的最佳default box设置为正样本（对应论文中Matching strategy的第一条）
         # set best ious 2.0
         best_dbox_ious.index_fill_(0, best_bbox_idx, 2.0)  # dim, index, value
         # 将相应default box匹配最大IOU的GT索引进行替换
         idx = torch.arange(0, best_bbox_idx.size(0), dtype=torch.int64)
         best_dbox_idx[best_bbox_idx[idx]] = idx
 
-        # filter IoU > 0.5
+        # (第二条准则)filter IoU > 0.5
         # 寻找与GT iou大于0.5的default box,对应论文中Matching strategy的第二条(这里包括了第一条匹配到的信息)
         masks = best_dbox_ious > criteria
+        # 取出属于正样本的default box对应的GT索引，与GT的label比较
         # [8732,]
         labels_out = torch.zeros(self.nboxes, dtype=torch.int64)
         labels_out[masks] = labels_in[best_dbox_idx[masks]]
@@ -340,31 +344,42 @@ class Encoder(object):
 
 class DefaultBoxes(object):
     def __init__(self, fig_size, feat_size, steps, scales, aspect_ratios, scale_xy=0.1, scale_wh=0.2):
-        self.fig_size = fig_size   # 输入网络的图像大小 300
+        # 输入网络的图像大小 300
+        self.fig_size = fig_size   
+        
+        # 每个预测层的feature map尺寸
         # [38, 19, 10, 5, 3, 1]
-        self.feat_size = feat_size  # 每个预测层的feature map尺寸
+        self.feat_size = feat_size  
 
         self.scale_xy_ = scale_xy
         self.scale_wh_ = scale_wh
 
         # According to https://github.com/weiliu89/caffe
         # Calculation method slightly different from paper
+        # 每个特征层上的一个cell在原图上的跨度
+        # 问题：难道不应该是self.fig_size/self.feat_size
         # [8, 16, 32, 64, 100, 300]
-        self.steps = steps    # 每个特征层上的一个cell在原图上的跨度
+        self.steps = steps    
 
+        # 每个特征层上预测的default box的scale
         # [21, 45, 99, 153, 207, 261, 315]
-        self.scales = scales  # 每个特征层上预测的default box的scale
+        self.scales = scales  
 
-        fk = fig_size / np.array(steps)     # 计算每层特征层的fk
+        # 计算每层特征层的fk
+        fk = fig_size / np.array(steps)   
+        # 每个预测特征层上预测的default box的ratios
+        # 为了方便，没写1:1的比例  
         # [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
-        self.aspect_ratios = aspect_ratios  # 每个预测特征层上预测的default box的ratios
+        self.aspect_ratios = aspect_ratios  
 
         self.default_boxes = []
         # size of feature and number of feature
         # 遍历每层特征层，计算default box
         for idx, sfeat in enumerate(self.feat_size):
-            sk1 = scales[idx] / fig_size  # scale转为相对值[0-1]
-            sk2 = scales[idx + 1] / fig_size  # scale转为相对值[0-1]
+            # scale转为相对值[0-1]
+            sk1 = scales[idx] / fig_size  
+            # scale转为相对值[0-1]
+            sk2 = scales[idx + 1] / fig_size  
             sk3 = sqrt(sk1 * sk2)
             # 先添加两个1:1比例的default box宽和高
             all_sizes = [(sk1, sk1), (sk3, sk3)]
@@ -379,12 +394,15 @@ class DefaultBoxes(object):
             for w, h in all_sizes:
                 for i, j in itertools.product(range(sfeat), repeat=2):  # i -> 行（y）， j -> 列（x）
                     # 计算每个default box的中心坐标（范围是在0-1之间）
+                    # 由于用的是fk，所以数值比用self.scales的结果偏大
                     cx, cy = (j + 0.5) / fk[idx], (i + 0.5) / fk[idx]
                     self.default_boxes.append((cx, cy, w, h))
 
         # 将default_boxes转为tensor格式
-        self.dboxes = torch.as_tensor(self.default_boxes, dtype=torch.float32)  # 这里不转类型会报错
-        self.dboxes.clamp_(min=0, max=1)  # 将坐标（x, y, w, h）都限制在0-1之间
+        # 这里不转类型会报错
+        self.dboxes = torch.as_tensor(self.default_boxes, dtype=torch.float32)  
+        # 将坐标（x, y, w, h）都限制在0-1之间
+        self.dboxes.clamp_(min=0, max=1)  
 
         # For IoU calculation
         # ltrb is left top coordinate and right bottom coordinate
@@ -506,12 +524,15 @@ class PostProcess(nn.Module):
     def __init__(self, dboxes):
         super(PostProcess, self).__init__()
         # [num_anchors, 4] -> [1, num_anchors, 4]
+        # 转化成pytorch中的参数形式
         self.dboxes_xywh = nn.Parameter(dboxes(order='xywh').unsqueeze(dim=0),
                                         requires_grad=False)
         self.scale_xy = dboxes.scale_xy  # 0.1
         self.scale_wh = dboxes.scale_wh  # 0.2
 
+        # IOU阈值
         self.criteria = 0.5
+        # 最多输出100个目标
         self.max_output = 100
 
     def scale_back_batch(self, bboxes_in, scores_in):
@@ -564,6 +585,7 @@ class PostProcess(nn.Module):
             criteria : IoU threshold of bboexes
             max_output : maximum number of output bboxes
         """
+        # 获取设备信息
         device = bboxes_in.device
         num_classes = scores_in.shape[-1]
 
@@ -614,6 +636,7 @@ class PostProcess(nn.Module):
         return bboxes_out, labels_out, scores_out
 
     def forward(self, bboxes_in, scores_in):
+        # bboxes_in：预测的检测框 scores_in：预测的类别
         # 通过预测的boxes回归参数得到最终预测坐标, 将预测目标score通过softmax处理
         bboxes, probs = self.scale_back_batch(bboxes_in, scores_in)
 

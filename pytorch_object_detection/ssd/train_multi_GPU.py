@@ -193,6 +193,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=__doc__)
 
+    # CUDA_VISIBLE_DEVICES=0,1,2,3 nohup python -m torch.distributed.launch --nproc_per_node=4 --use_env train_multi_GPU.py --data-path ../../data_set --output-dir ./save_weights --batch-size 4 --lr 0.000625 > ./log/trainingTestLog.txt 2>&1 &
     # 训练文件的根目录(VOCdevkit)
     parser.add_argument('--data-path', default='./', help='dataset')
     # 检测的目标类别个数，不包括背景
