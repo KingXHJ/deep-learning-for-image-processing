@@ -116,7 +116,8 @@ class RoIHeads(torch.nn.Module):
         labels = []
         # 遍历每张图像的proposals, gt_boxes, gt_labels信息
         for proposals_in_image, gt_boxes_in_image, gt_labels_in_image in zip(proposals, gt_boxes, gt_labels):
-            if gt_boxes_in_image.numel() == 0:  # 该张图像中没有gt框，为背景
+            # 该张图像中没有gt框，为背景
+            if gt_boxes_in_image.numel() == 0:  
                 # background image
                 device = proposals_in_image.device
                 clamped_matched_idxs_in_image = torch.zeros(
@@ -168,6 +169,7 @@ class RoIHeads(torch.nn.Module):
             sampled_inds.append(img_sampled_inds)
         return sampled_inds
 
+    # 为了增加正样本，让gtbox也成为正样本
     def add_gt_proposals(self, proposals, gt_boxes):
         # type: (List[Tensor], List[Tensor]) -> List[Tensor]
         """
