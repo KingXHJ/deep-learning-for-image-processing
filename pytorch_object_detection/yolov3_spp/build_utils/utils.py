@@ -285,6 +285,8 @@ def build_targets(p, targets, model):
         na = anchors.shape[0]  # number of anchors
         # [3] -> [3, 1] -> [3, nt]
         at = torch.arange(na).view(na, 1).repeat(1, nt)  # anchor tensor, same as .repeat_interleave(nt)
+        # 在跑模型时跳的bug，at的device为cpu，下面需要添加一行
+        at = at.to(targets.device)
 
         # Match targets to anchors
         a, t, offsets = [], targets * gain, 0

@@ -34,6 +34,7 @@ def exif_size(img):
     # Returns exif-corrected PIL size
     s = img.size  # (width, height)
     try:
+        # h获取图片的旋转信息
         rotation = dict(img._getexif().items())[orientation]
         if rotation == 6:  # rotation 270  顺时针翻转90度
             s = (s[1], s[0])
@@ -54,10 +55,16 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                  # 当为验证集时，设置的是最终使用的网络大小
                  img_size=416,
                  batch_size=16,
-                 augment=False,  # 训练集设置为True(augment_hsv)，验证集设置为False
-                 hyp=None,  # 超参数字典，其中包含图像增强会使用到的超参数
-                 rect=False,  # 是否使用rectangular training
-                 cache_images=False,  # 是否缓存图片到内存中
+                 # 训练集设置为True(augment_hsv)，验证集设置为False
+                 # 是否开启图像增强
+                 augment=False,  
+                 # 超参数字典，其中包含图像增强会使用到的超参数
+                 hyp=None,  
+                 # 是否使用rectangular training
+                 # 训练的时候是false，验证的时候是true
+                 rect=False,  
+                 # 是否缓存图片到内存中
+                 cache_images=False,  
                  single_cls=False, pad=0.0, rank=-1):
 
         try:
@@ -152,6 +159,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 mini, maxi = ari.min(), ari.max()
 
                 # 如果高/宽小于1(w > h)，将w设为img_size
+                # maxi是h相对指定尺度的比例，1是w相对指定尺度的比例
                 if maxi < 1:
                     shapes[i] = [maxi, 1]
                 # 如果高/宽大于1(w < h)，将h设置为img_size
@@ -168,6 +176,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         nm, nf, ne, nd = 0, 0, 0, 0  # number mission, found, empty, duplicate
         # 这里分别命名是为了防止出现rect为False/True时混用导致计算的mAP错误
         # 当rect为True时会对self.images和self.labels进行从新排序
+        # 源代码的坑
         if rect is True:
             np_labels_path = str(Path(self.label_files[0]).parent) + ".rect.npy"  # saved labels in *.npy file
         else:
@@ -196,6 +205,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 try:
                     with open(file, "r") as f:
                         # 读取每一行label，并按空格划分数据
+                        # 读到的坐标都是相对坐标
                         l = np.array([x.split() for x in f.read().splitlines()], dtype=np.float32)
                 except Exception as e:
                     print("An error occurred while loading the file {}: {}".format(file, e))
@@ -257,9 +267,12 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             print("Saving labels to %s for faster future loading" % np_labels_path)
             np.save(np_labels_path, self.labels)  # save for next time
 
+        # 缓存图像的方法
+        # 如果使用多GPU训练并开启cache_images时，每个进程都会缓存一份
         # Cache images into memory for faster training (Warning: large datasets may exceed system RAM)
         if cache_images:  # if training
             gb = 0  # Gigabytes of cached images 用于记录缓存图像占用RAM大小
+            # 是否是主进程
             if rank in [-1, 0]:
                 pbar = tqdm(range(len(self.img_files)), desc="Caching images")
             else:
@@ -269,9 +282,11 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             for i in pbar:  # max 10k images
                 self.imgs[i], self.img_hw0[i], self.img_hw[i] = load_image(self, i)  # img, hw_original, hw_resized
                 gb += self.imgs[i].nbytes  # 用于记录缓存图像占用RAM大小
+                # 计算缓存大小
                 if rank in [-1, 0]:
                     pbar.desc = "Caching images (%.1fGB)" % (gb / 1E9)
 
+        # 检测图片是否有破损
         # Detect corrupted images https://medium.com/joelthchao/programmatically-detect-corrupted-image-8c1b2006c3d3
         detect_corrupted_images = False
         if detect_corrupted_images:
@@ -286,7 +301,9 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         return len(self.img_files)
 
     def __getitem__(self, index):
+        # 超参数
         hyp = self.hyp
+        # 是否使用mosaic方法
         if self.mosaic:
             # load mosaic
             img, labels = load_mosaic(self, index)
@@ -377,10 +394,12 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 def load_image(self, index):
     # loads 1 image from dataset, returns img, original hw, resized hw
     img = self.imgs[index]
+    # 判断图像是否实现载入好了
     if img is None:  # not cached
         path = self.img_files[index]
         img = cv2.imread(path)  # BGR
         assert img is not None, "Image Not Found " + path
+        # 原始宽度和高度
         h0, w0 = img.shape[:2]  # orig hw
         # img_size 设置的是预处理后输出的图片尺寸
         r = self.img_size / max(h0, w0)  # resize image to img_size

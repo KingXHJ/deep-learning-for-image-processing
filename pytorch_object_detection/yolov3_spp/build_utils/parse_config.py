@@ -18,6 +18,7 @@ def parse_model_cfg(path: str):
 
     mdefs = []  # module definitions
     for line in lines:
+        # 找模块的开头
         if line.startswith("["):  # this marks the start of a new block
             mdefs.append({})
             mdefs[-1]["type"] = line[1:-1].strip()  # 记录module类型
@@ -31,7 +32,8 @@ def parse_model_cfg(path: str):
 
             if key == "anchors":
                 # anchors = 10,13,  16,30,  33,23,  30,61,  62,45,  59,119,  116,90,  156,198,  373,326
-                val = val.replace(" ", "")  # 将空格去除
+                # 将空格去除
+                val = val.replace(" ", "")  
                 mdefs[-1][key] = np.array([float(x) for x in val.split(",")]).reshape((-1, 2))  # np anchors
             elif (key in ["from", "layers", "mask"]) or (key == "size" and "," in val):
                 mdefs[-1][key] = [int(x) for x in val.split(",")]
@@ -43,6 +45,7 @@ def parse_model_cfg(path: str):
                     mdefs[-1][key] = val  # return string  是字符的情况
 
     # check all fields are supported
+    # 类型支持列表
     supported = ['type', 'batch_normalize', 'filters', 'size', 'stride', 'pad', 'activation', 'layers', 'groups',
                  'from', 'mask', 'anchors', 'classes', 'num', 'jitter', 'ignore_thresh', 'truth_thresh', 'random',
                  'stride_x', 'stride_y', 'weights_type', 'weights_normalization', 'scale_x_y', 'beta_nms', 'nms_kind',

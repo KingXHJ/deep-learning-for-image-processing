@@ -15,6 +15,7 @@ def create_modules(modules_defs: list, img_size):
     img_size = [img_size] * 2 if isinstance(img_size, int) else img_size
     # 删除解析cfg列表中的第一个配置(对应[net]的配置)
     modules_defs.pop(0)  # cfg training hyperparams (unused)
+    # 记录每个模块的特征矩阵的channel
     output_filters = [3]  # input channels
     module_list = nn.ModuleList()
     # 统计哪些特征层的输出会被后续的层使用到(可能是特征融合，也可能是拼接)
