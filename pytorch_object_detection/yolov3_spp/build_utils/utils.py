@@ -207,9 +207,11 @@ def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#iss
 
 def compute_loss(p, targets, model):  # predictions, targets, model
     device = p[0].device
+    # 类别损失、定位损失和objectness损失
     lcls = torch.zeros(1, device=device)  # Tensor(0)
     lbox = torch.zeros(1, device=device)  # Tensor(0)
     lobj = torch.zeros(1, device=device)  # Tensor(0)
+    # 计算所有的正样本
     tcls, tbox, indices, anchors = build_targets(p, targets, model)  # targets
     h = model.hyp  # hyperparameters
     red = 'mean'  # Loss reduction (sum or mean)
@@ -219,6 +221,8 @@ def compute_loss(p, targets, model):  # predictions, targets, model
     BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device), reduction=red)
 
     # class label smoothing https://arxiv.org/pdf/1902.04103.pdf eqn 3
+    # cp：class positive=1
+    # cn：class negative=0
     cp, cn = smooth_BCE(eps=0.0)
 
     # focal loss
@@ -227,8 +231,10 @@ def compute_loss(p, targets, model):  # predictions, targets, model
         BCEcls, BCEobj = FocalLoss(BCEcls, g), FocalLoss(BCEobj, g)
 
     # per output
+    # pi：[batch_size, num_anchors, feature_size, feature_size, location(4)+objectness(1)+class(20)]
     for i, pi in enumerate(p):  # layer index, layer predictions
         b, a, gj, gi = indices[i]  # image_idx, anchor_idx, grid_y, grid_x
+        # 正样本所在位置设置标签
         tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
 
         nb = b.shape[0]  # number of positive samples
@@ -273,8 +279,10 @@ def build_targets(p, targets, model):
     # Build targets for compute_loss(), input targets(image_idx,class,x,y,w,h)
     nt = targets.shape[0]
     tcls, tbox, indices, anch = [], [], [], []
+    # 针对每一个目标的增益
     gain = torch.ones(6, device=targets.device).long()  # normalized to gridspace gain
 
+    # 判断模型类型，是不是多GPU训练
     multi_gpu = type(model) in (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel)
     for i, j in enumerate(model.yolo_layers):  # j: [89, 101, 113]
         # 获取该yolo predictor对应的anchors
@@ -292,13 +300,20 @@ def build_targets(p, targets, model):
         a, t, offsets = [], targets * gain, 0
         if nt:  # 如果存在target的话
             # 通过计算anchor模板与所有target的wh_iou来匹配正样本
+            # 强调：是anchor模板，不是预测结果
+            # 计算方法是anchor模板和gt左上角点重合，然后计算
+            # 是粗略的计算方法
+            # UP认为在anchors足够密集的情况下可以这么做
             # j: [3, nt] , iou_t = 0.20
             j = wh_iou(anchors, t[:, 4:6]) > model.hyp['iou_t']  # iou(3,n) = wh_iou(anchors(3,2), gwh(n,2))
             # t.repeat(na, 1, 1): [nt, 6] -> [3, nt, 6]
             # 获取正样本对应的anchor模板与target信息
+            # t：是所有正样本匹配到的target(gt)信息
             a, t = at[j], t.repeat(na, 1, 1)[j]  # filter
 
         # Define
+        # YOLOv3都是在每个grid cell的左上角点生成anchors
+        # 且anchors的中心点都对应grid cell的左上角点
         # long等于to(torch.int64), 数值向下取整
         b, c = t[:, :2].long().T  # image_idx, class
         gxy = t[:, 2:4]  # grid xy
@@ -309,6 +324,11 @@ def build_targets(p, targets, model):
         # Append
         # gain[3]: grid_h, gain[2]: grid_w
         # image_idx, anchor_idx, grid indices(y, x)
+        # b：所有正样本对应的image index
+        # a：所有正样本对应的anchor模板
+        # gj：每个正样本的中心点的y坐标
+        # gi：每个正样本的中心点的x坐标
+        # clamp：限制在特征层的内部，防止越界
         indices.append((b, a, gj.clamp_(0, gain[3]-1), gi.clamp_(0, gain[2]-1)))
         tbox.append(torch.cat((gxy - gij, gwh), 1))  # gt box相对anchor的x,y偏移量以及w,h
         anch.append(anchors[a])  # anchors

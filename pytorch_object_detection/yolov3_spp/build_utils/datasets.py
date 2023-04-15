@@ -341,6 +341,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             augment_hsv(img, h_gain=hyp["hsv_h"], s_gain=hyp["hsv_s"], v_gain=hyp["hsv_v"])
 
         nL = len(labels)  # number of labels
+        # 如果存在目标的话
         if nL:
             # convert xyxy to xywh
             labels[:, 1:5] = xyxy2xywh(labels[:, 1:5])
@@ -388,6 +389,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         img, label, path, shapes, index = zip(*batch)  # transposed
         for i, l in enumerate(label):
             l[:, 0] = i  # add target image index for build_targets()
+        # img加了一个新的维度
         return torch.stack(img, 0), torch.cat(label, 0), path, shapes, index
 
 
@@ -499,6 +501,7 @@ def random_affine(img, targets=(), degrees=10, translate=.1, scale=.1, shear=10,
     # targets = [cls, xyxy]
 
     # 最终输出的图像尺寸，等于img4.shape / 2
+    # 这么操作之后，其实和输入图像尺寸一样
     height = img.shape[0] + border * 2
     width = img.shape[1] + border * 2
 
