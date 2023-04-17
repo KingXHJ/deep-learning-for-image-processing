@@ -183,6 +183,7 @@ def paste_mask_in_image(mask, box, im_h, im_w):
     # type: (Tensor, Tensor, int, int) -> Tensor
 
     # refer to: https://github.com/pytorch/vision/issues/5845
+    # 保证目标边界框的目标都大于等于1
     TO_REMOVE = 1
     w = int(box[2] - box[0] + TO_REMOVE)
     h = int(box[3] - box[1] + TO_REMOVE)
@@ -199,6 +200,7 @@ def paste_mask_in_image(mask, box, im_h, im_w):
 
     im_mask = torch.zeros((im_h, im_w), dtype=mask.dtype, device=mask.device)
     # 填入原图的目标区域(防止越界)
+    # 为什么要+1？因为下一步操作要切片，切片是左闭右开的，为了取得到max值，所以要+1
     x_0 = max(box[0], 0)
     x_1 = min(box[2] + 1, im_w)
     y_0 = max(box[1], 0)

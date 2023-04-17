@@ -143,21 +143,27 @@ class MaskRCNN(FasterRCNN):
             if mask_predictor is not None:
                 raise ValueError("num_classes should be None when mask_predictor is specified")
 
+        # 获取backbone
         out_channels = backbone.out_channels
 
+        # 特征图采样
         if mask_roi_pool is None:
             mask_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=14, sampling_ratio=2)
 
+        # Mask分支的4个3x3卷积层
         if mask_head is None:
             mask_layers = (256, 256, 256, 256)
             mask_dilation = 1
             mask_head = MaskRCNNHeads(out_channels, mask_layers, mask_dilation)
 
+        # 通过转置卷积的预测
+        # num_classes包含背景
         if mask_predictor is None:
             mask_predictor_in_channels = 256
             mask_dim_reduced = 256
             mask_predictor = MaskRCNNPredictor(mask_predictor_in_channels, mask_dim_reduced, num_classes)
 
+        # 传入父类Fast R-CNN的初始化参数
         super().__init__(
             backbone,
             num_classes,
@@ -206,10 +212,14 @@ class MaskRCNNHeads(nn.Sequential):
             layers (tuple): feature dimensions of each FCN layer
             dilation (int): dilation rate of kernel
         """
+        # 初始化一个有序字典
         d = OrderedDict()
         next_feature = in_channels
 
+        # 遍历传入的layers，就是传入的特征层
         for layer_idx, layers_features in enumerate(layers, 1):
+            # 构建每一个3x3卷积层
+            # dilation默认是1
             d[f"mask_fcn{layer_idx}"] = nn.Conv2d(next_feature,
                                                   layers_features,
                                                   kernel_size=3,
@@ -219,9 +229,11 @@ class MaskRCNNHeads(nn.Sequential):
             d[f"relu{layer_idx}"] = nn.ReLU(inplace=True)
             next_feature = layers_features
 
+        # 有序字典传入父类的初始化方法
         super().__init__(d)
         # initial params
         for name, param in self.named_parameters():
+            # 卷积层的kernel做kaiming_normal初始化
             if "weight" in name:
                 nn.init.kaiming_normal_(param, mode="fan_out", nonlinearity="relu")
 

@@ -53,6 +53,7 @@ class VOCInstances(Dataset):
             assert os.path.exists(mask_path), f"not find {mask_path}"
 
             # 解析xml中bbox信息
+            # 这里不包含segmentation信息
             with open(xml_path) as fid:
                 xml_str = fid.read()
             xml = etree.fromstring(xml_str)
@@ -101,6 +102,7 @@ class VOCInstances(Dataset):
             tuple: (image, target) where target is the image segmentation.
         """
         img = Image.open(self.images_path[idx]).convert('RGB')
+        # target不包含mask
         target = self.objects_bboxes[idx]
         masks = self.parse_mask(idx)
         target["masks"] = masks

@@ -40,11 +40,15 @@ def coco_remove_images_without_annotations(dataset, ids):
 def convert_coco_poly_mask(segmentations, height, width):
     masks = []
     for polygons in segmentations:
+        # 处理多边形
         rles = coco_mask.frPyObjects(polygons, height, width)
+        # 处理成mask信息
         mask = coco_mask.decode(rles)
+        # mask维度小于3，肯定少信息了
         if len(mask.shape) < 3:
             mask = mask[..., None]
         mask = torch.as_tensor(mask, dtype=torch.uint8)
+        # 只要有1都是前景
         mask = mask.any(dim=2)
         masks.append(mask)
     if masks:

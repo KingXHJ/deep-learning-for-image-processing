@@ -124,6 +124,7 @@ class CocoDetection(data.Dataset):
         path = coco.loadImgs(img_id)[0]['file_name']
         img = Image.open(os.path.join(self.img_root, path)).convert('RGB')
 
+        # 构建好了maks目标
         w, h = img.size
         target = self.parse_targets(img_id, coco_target, w, h)
         if self.transforms is not None:

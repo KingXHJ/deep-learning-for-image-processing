@@ -142,6 +142,7 @@ def maskrcnn_loss(mask_logits, proposals, gt_masks, gt_labels, mask_matched_idxs
 
     # 计算预测mask与真实gt_mask之间的BCELoss
     mask_loss = F.binary_cross_entropy_with_logits(
+        # 需要通过类别的label切片出对应的mask
         mask_logits[torch.arange(labels.shape[0], device=labels.device), labels], mask_targets
     )
     return mask_loss
@@ -496,6 +497,7 @@ class RoIHeads(torch.nn.Module):
         # 接着分别预测目标类别和边界框回归参数
         class_logits, box_regression = self.box_predictor(box_features)
 
+        # result
         result: List[Dict[str, torch.Tensor]] = []
         losses = {}
         if self.training:
@@ -518,8 +520,10 @@ class RoIHeads(torch.nn.Module):
                     }
                 )
 
+        # 是否有mask分支
         if self.has_mask():
-            mask_proposals = [p["boxes"] for p in result]  # 将最终预测的Boxes信息取出
+            # 将最终预测的Boxes信息取出
+            mask_proposals = [p["boxes"] for p in result]  
             if self.training:
                 # matched_idxs为每个proposal在正负样本匹配过程中得到的gt索引(背景的gt索引也默认设置成了0)
                 if matched_idxs is None:
@@ -527,20 +531,27 @@ class RoIHeads(torch.nn.Module):
 
                 # during training, only focus on positive boxes
                 num_images = len(proposals)
+                # 存储计算mask损失利用到的proposal
                 mask_proposals = []
+                # 存储上述proposal对应gt的索引
                 pos_matched_idxs = []
                 for img_id in range(num_images):
-                    pos = torch.where(labels[img_id] > 0)[0]  # 寻找对应gt类别大于0，即正样本
+                    # 寻找对应gt类别大于0，即正样本(因为背景标签是0)
+                    pos = torch.where(labels[img_id] > 0)[0]  
+                    # 取每张图片的正样本proposal
                     mask_proposals.append(proposals[img_id][pos])
+                    # 对应GT的索引
                     pos_matched_idxs.append(matched_idxs[img_id][pos])
             else:
                 pos_matched_idxs = None
 
+            # image_shapes：用于重塑image的大小
             mask_features = self.mask_roi_pool(features, mask_proposals, image_shapes)
             mask_features = self.mask_head(mask_features)
             mask_logits = self.mask_predictor(mask_features)
 
             loss_mask = {}
+            # 训练模式计算损失
             if self.training:
                 if targets is None or pos_matched_idxs is None or mask_logits is None:
                     raise ValueError("targets, pos_matched_idxs, mask_logits cannot be None when training")
@@ -549,6 +560,7 @@ class RoIHeads(torch.nn.Module):
                 gt_labels = [t["labels"] for t in targets]
                 rcnn_loss_mask = maskrcnn_loss(mask_logits, mask_proposals, gt_masks, gt_labels, pos_matched_idxs)
                 loss_mask = {"loss_mask": rcnn_loss_mask}
+            # 预测模式画框
             else:
                 labels = [r["labels"] for r in result]
                 mask_probs = maskrcnn_inference(mask_logits, labels)
