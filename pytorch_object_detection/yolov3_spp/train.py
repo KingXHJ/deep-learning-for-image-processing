@@ -4,7 +4,7 @@ import argparse
 import yaml
 import torch.optim as optim
 import torch.optim.lr_scheduler as lr_scheduler
-# from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 from models import *
 from build_utils.datasets import *
@@ -218,13 +218,13 @@ def train(hyp):
             voc_mAP = result_info[1]
             coco_mAR = result_info[8]
 
-            # # write into tensorboard
-            # if tb_writer:
-            #     tags = ['train/giou_loss', 'train/obj_loss', 'train/cls_loss', 'train/loss', "learning_rate",
-            #             "mAP@[IoU=0.50:0.95]", "mAP@[IoU=0.5]", "mAR@[IoU=0.50:0.95]"]
+            # write into tensorboard
+            if tb_writer:
+                tags = ['train/giou_loss', 'train/obj_loss', 'train/cls_loss', 'train/loss', "learning_rate",
+                        "mAP@[IoU=0.50:0.95]", "mAP@[IoU=0.5]", "mAR@[IoU=0.50:0.95]"]
 
-            #     for x, tag in zip(mloss.tolist() + [lr, coco_mAP, voc_mAP, coco_mAR], tags):
-            #         tb_writer.add_scalar(tag, x, epoch)
+                for x, tag in zip(mloss.tolist() + [lr, coco_mAP, voc_mAP, coco_mAR], tags):
+                    tb_writer.add_scalar(tag, x, epoch)
 
             # write into txt
             with open(results_file, "a") as f:
@@ -297,6 +297,6 @@ if __name__ == '__main__':
     with open(opt.hyp) as f:
         hyp = yaml.load(f, Loader=yaml.FullLoader)
 
-    #print('Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/')
-    #tb_writer = SummaryWriter(comment=opt.name)
+    print('Start Tensorboard with "tensorboard --logdir=runs", view at http://localhost:6006/')
+    tb_writer = SummaryWriter(comment=opt.name)
     train(hyp)
